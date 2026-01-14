@@ -1,0 +1,151 @@
+pipeline {
+    agent any 
+    options {
+        buildDiscarder(logRotator(numToKeepStr: '10', artifactNumToKeepStr: '5'))
+        timestamps()
+    }
+    tools {
+        jdk 'jdk'
+        nodejs 'nodejs'
+    }
+    environment  {
+        SCANNER_HOME=tool 'sonar-scanner'
+    }
+    stages {
+        stage('Cleaning Workspace') {
+            steps {
+                cleanWs()
+            }
+        }
+        stage('Deep Clean Cache') {
+          steps {
+            sh '''
+              set -eux
+              
+              # 1) Clean rebuildable caches
+              rm -rf ~/.cache/* || true
+              rm -rf ~/.npm || true
+              rm -rf ~/.cache/trivy || true
+              rm -rf ~/.sonar/cache || true
+        
+              # 2) Clean local Dependency-Check database (grows the most)
+              rm -rf ~/.dependency-check || true
+              rm -rf /var/jenkins_home/.dependency-check || true
+        
+              # 3) Delete node_modules in all workspaces (high impact)
+              find /var/jenkins_home/workspace -maxdepth 4 -type d -name "node_modules" -prune -exec rm -rf {} + || true
+        
+              # 4) Delete dist/build/release (heavy artifacts)
+              find /var/jenkins_home/workspace -maxdepth 4 -type d \\( -name "dist" -o -name "build" -o -name "release" \\) -prune -exec rm -rf {} + || true
+        
+              # 5) Delete reports and known large files (includes dependency-check report)
+              find /var/jenkins_home/workspace -type f \\( -iname "*dependency-check*.xml" -o -iname "*dependency-check*.html" -o -iname "*trivy*.txt" -o -iname "dependency-check-report.xml" -o -iname "trivyfs.txt" -o -iname "trivyimage.txt" \\) -delete || true
+        
+              # 6) Compress old logs to save inodes (optional)
+              find /var/jenkins_home/workspace -type f -name "*.log" -mtime +14 -exec gzip -9 {} \\; || true
+        
+              echo "Deep clean completed"
+            '''
+          }
+        }
+        stage('Checkout from Git') {
+            steps {
+                git branch: 'main', url: 'https://github.com/sierraCode397/End-to-End-Kubernetes-DevSecOps-PoC.git'
+            }
+        }
+        stage('Sonarqube Analysis') {
+            steps {
+                dir('Tetris-V2') {
+                    withSonarQubeEnv('sonar-server') {
+                        sh ''' $SCANNER_HOME/bin/sonar-scanner -Dsonar.projectName=TetrisVersion1.0 \
+                        -Dsonar.projectKey=TetrisVersion1.0 '''
+                    }
+                }
+            }
+        }
+        stage('Quality Check') {
+            steps {
+                script {
+                    waitForQualityGate abortPipeline: false, credentialsId: 'sonar-token' 
+                }
+            }
+        }
+        stage('Installing Dependencies') {
+            steps {
+                dir('Tetris-V2') {
+                    sh 'npm install'
+                }
+            }
+        }
+        stage('OWASP Dependency-Check Scan') {
+            steps {
+                dir('Tetris-V2') {
+                    dependencyCheck additionalArguments: '--scan ./ --disableYarnAudit --disableNodeAudit', odcInstallation: 'DP-Check'
+                    dependencyCheckPublisher pattern: '**/dependency-check-report.xml'
+                }
+            }
+        }
+        stage('Trivy File Scan') {
+            steps {
+                dir('Tetris-V2') {
+                    sh 'trivy fs . > trivyfs.txt'
+                }
+            }
+        }
+        stage("Docker Image Build") {
+            steps {
+                script {
+                    dir('Tetris-V2') {
+                        withDockerRegistry(credentialsId: 'docker', toolName: 'docker') {   
+                            sh 'docker build -t tetrisv2 .'
+                        }
+                    }
+                }
+            }
+        }
+        stage("Docker Image Pushing") {
+            steps {
+                script {
+                    withDockerRegistry(credentialsId: 'docker', toolName: 'docker') {   
+                        sh 'docker tag tetrisv2 freelancerdev/tetrisv2:${BUILD_NUMBER}'
+                        sh 'docker push freelancerdev/tetrisv2:${BUILD_NUMBER}'
+                    }
+                }
+            }
+        }
+        stage("TRIVY Image Scan") {
+            steps {
+                sh 'trivy image freelancerdev/tetrisv2:${BUILD_NUMBER} > trivyimage.txt' 
+            }
+        }
+        stage('Checkout Code') {
+            steps {
+                git branch: 'main', url: 'https://github.com/sierraCode397/End-to-End-Kubernetes-DevSecOps-PoC.git'
+            }
+        }
+        stage('Update Deployment file') {
+            environment {
+                GIT_REPO_NAME = "End-to-End-Kubernetes-DevSecOps-PoC"
+                GIT_USER_NAME = "sierraCode397"
+            }
+            steps {
+                dir('Manifest-file') {
+                    withCredentials([string(credentialsId: 'github', variable: 'GITHUB_TOKEN')]) {
+                        sh '''
+                            git config user.email "izaack107@gmail.com"
+                            git config user.name "sierracode397"
+                            BUILD_NUMBER=${BUILD_NUMBER}
+                            echo $BUILD_NUMBER
+                            imageTag=$(grep 'tetrisv1:' deployment-service.yml | sed 's/.*tetrisv1://')
+                            echo $imageTag
+                            sed -i "s/tetrisv1:${imageTag}/tetrisv2:${BUILD_NUMBER}/" deployment-service.yml
+                            git add deployment-service.yml
+                            git commit -m "Update deployment Image to version \${BUILD_NUMBER}"
+                            git push https://${GITHUB_TOKEN}@github.com/${GIT_USER_NAME}/${GIT_REPO_NAME} HEAD:main
+                        '''
+                    }
+                }
+            }
+        }
+    }
+}
