@@ -136,9 +136,9 @@ pipeline {
                             git config user.name "sierracode397"
                             BUILD_NUMBER=${BUILD_NUMBER}
                             echo $BUILD_NUMBER
-                            imageTag=$(grep 'tetrisv1:' deployment-service.yml | sed 's/.*tetrisv1://')
+                            imageTag=$(grep -oP '(?<=tetrisv2:)[^ ]+' deployment-service.yml)
                             echo $imageTag
-                            sed -i "s/tetrisv1:${imageTag}/tetrisv2:${BUILD_NUMBER}/" deployment-service.yml
+                            sed -i "s/tetrisv2:${imageTag}/tetrisv2:${BUILD_NUMBER}/" deployment-service.yml
                             git add deployment-service.yml
                             git commit -m "Update deployment Image to version \${BUILD_NUMBER}"
                             git push https://${GITHUB_TOKEN}@github.com/${GIT_USER_NAME}/${GIT_REPO_NAME} HEAD:main

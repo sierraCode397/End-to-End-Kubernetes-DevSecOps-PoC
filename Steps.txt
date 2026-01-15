@@ -17,3 +17,12 @@ Join Tetris:
 
     kubectl get svc -n tetris
     kubectl port-forward svc/tetris-service -n tetris 3000:80
+
+Changes Manifest:
+
+    spec:
+      containers:
+      - name: tetris
+        image: freelancerdev/tetrisv2:1       <--------------------
+        ports:
+        - containerPort: 3000
