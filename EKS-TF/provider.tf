@@ -5,6 +5,7 @@ provider "aws" {
   skip_credentials_validation = true
   skip_metadata_api_check     = true
   s3_use_path_style           = true
+  skip_requesting_account_id  = true 
   endpoints {
     acm                      = "http://localhost:4566"
     amplify                  = "http://localhost:4566"
@@ -27,7 +28,6 @@ provider "aws" {
     cognitoidentity          = "http://localhost:4566"
     cognitoidp               = "http://localhost:4566"
     config                   = "http://localhost:4566"
-    configservice            = "http://localhost:4566"
     costexplorer             = "http://localhost:4566"
     docdb                    = "http://localhost:4566"
     dynamodb                 = "http://localhost:4566"
