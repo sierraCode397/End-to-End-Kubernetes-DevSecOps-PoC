@@ -26,3 +26,8 @@ Changes Manifest:
         image: freelancerdev/tetrisv2:1       <--------------------
         ports:
         - containerPort: 3000
+
+Check Artifacts:
+
+    docker volume inspect jenkins_container_jenkins-vol
+    cd  Mountpoint": "/var/lib/docker/volumes/jenkins_container_jenkins-vol/_data"
