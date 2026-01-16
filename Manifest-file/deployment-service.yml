@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
       - name: tetris
-        image: freelancerdev/tetrisv1:2    # <------------------ change this
+        image: freelancerdev/tetrisv2:14    # <------------------ change this
         ports:
         - containerPort: 3000
 ---
