@@ -1,6 +1,97 @@
 Jenkins:
 
-    Update plugins & Restart service
+    Update plugins & Restart service to solve the issue
+
+    Tools:
+
+        jdk
+        ✅ Install automatically
+            Install from adoptium.net
+                Version
+                jdk-21.0.3+9
+
+        nodejs
+        ✅ Install automatically
+            Install from nodejs.org
+                Version
+                NodeJS 25.3.0
+
+        DP-Check
+        ✅ Install automatically
+            Install from github.com
+                Version
+                dependency-check 12.2.0
+
+        docker
+        ✅ Install automatically
+            Download from docker.com
+                Docker version
+                latest
+
+        sonar-scanner
+        ✅ Install automatically
+            Install from Maven Central
+                Version
+                SonarQube Scanner 8.0.1.6346
+
+    Credentials:
+
+        SonarQube
+            Kind
+                Secret text
+            Secret
+                ••••••••••••••••••••••••••••••••••••••••••••
+            ID
+                sonar-token
+            Description:
+                sonar-token
+
+        OWASP
+            Kind
+                Secret text
+            Secret
+                ••••••••••••••••••••••••••••••••••••••••••••
+            ID
+                nvd-api-key
+            Description:
+                nvd-api-key
+
+        Github
+
+            Kind
+                Secret text
+            Secret
+                ••••••••••••••••••••••••••••••••••••••••••••
+            ID
+                github
+            Description:
+                github
+
+        Docker
+
+            Kind
+                Username with password
+            Username
+                freelancerdev
+            Password
+                •••••••••••
+            ID
+                docker
+            Description:
+                docker
+
+    System:
+
+        SonarQube installations
+        
+            Name
+                sonar-server
+            Server URL
+                http://192.168.57.12:9000/
+            Server authentication token
+                sonar-token
+
+
 
 Setup K8:
 
