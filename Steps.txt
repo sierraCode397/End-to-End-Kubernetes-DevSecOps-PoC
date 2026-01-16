@@ -43,3 +43,10 @@ Check Artifacts:
 
     docker volume inspect jenkins_container_jenkins-vol
     cd  Mountpoint": "/var/lib/docker/volumes/jenkins_container_jenkins-vol/_data"
+
+Test Version 2:
+
+    git restore .
+    git clean -fd
+    git checkout -b develop
+    rsync -av --delete Tetris-V2/ Tetris-V1/
