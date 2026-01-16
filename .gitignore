@@ -39,3 +39,11 @@ Thumbs.db
 # --- Misc ---
 *.tgz
 *.zip
+
+# --- Opencode ---
+.opencode
+setup.log
+localstack_start.log
+
+# --- ME ---
+Steps.txt

@@ -107,9 +107,33 @@ pipeline {
                 script {
                     dir('Tetris-V1') {
                         withDockerRegistry(credentialsId: 'docker', toolName: 'docker') {   
+                            sh 'docker system prune -f'
+                            sh 'docker container prune -f'
                             sh 'docker build -t tetrisv1 .'
                         }
                     }
+                }
+            }
+        }
+        stage("Docker Image Cleanup") {
+            steps {
+                script {
+                    sh '''
+                    echo "Cleaning old Docker images, keeping only latest..."
+
+                    LATEST_ID=$(docker images tetrisv1:latest --format "{{.ID}}")
+
+                    if [ -z "$LATEST_ID" ]; then
+                    echo "No latest image found, skipping cleanup"
+                    exit 0
+                    fi
+
+                    docker images tetrisv1 --format "{{.ID}}" \
+                    | grep -v "$LATEST_ID" \
+                    | xargs -r docker rmi -f
+
+                    echo "Docker image cleanup completed"
+                    '''
                 }
             }
         }

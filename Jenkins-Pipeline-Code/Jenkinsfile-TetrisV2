@@ -79,7 +79,7 @@ pipeline {
         }
         stage('OWASP Dependency-Check Scan') {
             steps {
-                dir('Tetris-V1') {
+                dir('Tetris-V2') {
                     withCredentials([string(credentialsId: 'nvd-api-key', variable: 'NVD_API_KEY')]) {
                         dependencyCheck(
                             odcInstallation: 'DP-Check',
@@ -107,9 +107,33 @@ pipeline {
                 script {
                     dir('Tetris-V2') {
                         withDockerRegistry(credentialsId: 'docker', toolName: 'docker') {   
+                            sh 'docker system prune -f'
+                            sh 'docker container prune -f'
                             sh 'docker build -t tetrisv2 .'
                         }
                     }
+                }
+            }
+        }
+        stage("Docker Image Cleanup") {
+            steps {
+                script {
+                    sh '''
+                    echo "Cleaning old Docker images, keeping only latest..."
+
+                    LATEST_ID=$(docker images tetrisv2:latest --format "{{.ID}}")
+
+                    if [ -z "$LATEST_ID" ]; then
+                    echo "No latest image found, skipping cleanup"
+                    exit 0
+                    fi
+
+                    docker images tetrisv2 --format "{{.ID}}" \
+                    | grep -v "$LATEST_ID" \
+                    | xargs -r docker rmi -f
+
+                    echo "Docker image cleanup completed"
+                    '''
                 }
             }
         }
