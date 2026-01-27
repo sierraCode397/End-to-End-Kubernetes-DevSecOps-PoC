@@ -1,0 +1,50 @@
+# --- Terraform ---
+**/.terraform/
+**/.terraform/*
+
+# Terraform state & sensitive files
+*.tfstate
+*.tfstate.*
+terraform.tfstate
+terraform.tfstate.backup
+crash.log
+
+# --- Node / JS ---
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+dist/
+build/
+coverage/
+.env
+.env.local
+.env.*.local
+
+# --- OS / Editor ---
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+
+# --- Jenkins / CI artifacts ---
+.trivy/
+.trivyignore
+*.log
+*.tmp
+
+# --- Misc ---
+*.tgz
+*.zip
+
+# --- Opencode ---
+.opencode
+setup.log
+localstack_start.log
+
+# --- ME ---
+Steps.txt
+
+# --- Key Pairs ---
+user1.pub

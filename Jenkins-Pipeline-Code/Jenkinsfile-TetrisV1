@@ -1,0 +1,187 @@
+pipeline {
+    agent any 
+    options {
+        buildDiscarder(logRotator(numToKeepStr: '10', artifactNumToKeepStr: '5'))
+        timestamps()
+    }
+    tools {
+        jdk 'jdk'
+        nodejs 'nodejs'
+    }
+    environment  {
+        SCANNER_HOME=tool 'sonar-scanner'
+    }
+    stages {
+        stage('Cleaning Workspace') {
+            steps {
+                cleanWs()
+            }
+        }
+        stage('Deep Clean Cache') {
+          steps {
+            sh '''
+              set -eux
+              
+              # 1) Clean rebuildable caches
+              rm -rf ~/.cache/* || true
+              rm -rf ~/.npm || true
+              rm -rf ~/.cache/trivy || true
+              rm -rf ~/.sonar/cache || true
+        
+              # 2) Clean local Dependency-Check database (grows the most)
+              rm -rf ~/.dependency-check || true
+              rm -rf /var/jenkins_home/.dependency-check || true
+        
+              # 3) Delete node_modules in all workspaces (high impact)
+              find /var/jenkins_home/workspace -maxdepth 4 -type d -name "node_modules" -prune -exec rm -rf {} + || true
+        
+              # 4) Delete dist/build/release (heavy artifacts)
+              find /var/jenkins_home/workspace -maxdepth 4 -type d \\( -name "dist" -o -name "build" -o -name "release" \\) -prune -exec rm -rf {} + || true
+        
+              # 5) Delete reports and known large files (includes dependency-check report)
+              find /var/jenkins_home/workspace -type f \\( -iname "*dependency-check*.xml" -o -iname "*dependency-check*.html" -o -iname "*trivy*.txt" -o -iname "dependency-check-report.xml" -o -iname "trivyfs.txt" -o -iname "trivyimage.txt" \\) -delete || true
+        
+              # 6) Compress old logs to save inodes (optional)
+              find /var/jenkins_home/workspace -type f -name "*.log" -mtime +14 -exec gzip -9 {} \\; || true
+        
+              echo "Deep clean completed"
+            '''
+          }
+        }
+        stage('Checkout from Git') {
+            steps {
+                git branch: 'main', url: 'http://3.85.174.206/root/devsecops.git'        /* <---------------- */
+            }
+        }
+        stage('Sonarqube Analysis') {
+            steps {
+                dir('Tetris-V1') {
+                    withSonarQubeEnv('sonar-server') {
+                        sh ''' $SCANNER_HOME/bin/sonar-scanner -Dsonar.projectName=TetrisVersion1.0 \
+                        -Dsonar.projectKey=TetrisVersion1.0 '''
+                    }
+                }
+            }
+        }
+        stage('Quality Check') {
+            steps {
+                script {
+                    waitForQualityGate abortPipeline: false, credentialsId: 'sonar-token' 
+                }
+            }
+        }
+        stage('Installing Dependencies') {
+            steps {
+                dir('Tetris-V1') {
+                    sh 'npm install'
+                }
+            }
+        }
+        stage('OWASP Dependency-Check Scan') {
+            steps {
+                dir('Tetris-V1') {
+                    withCredentials([string(credentialsId: 'nvd-api-key', variable: 'NVD_API_KEY')]) {
+                        dependencyCheck(
+                            odcInstallation: 'DP-Check',
+                            additionalArguments: '''
+                            --scan ./
+                            --disableYarnAudit
+                            --disableNodeAudit
+                            --nvdApiKey ${NVD_API_KEY}
+                            '''
+                        )
+                    }
+                    dependencyCheckPublisher pattern: '**/dependency-check-report.xml'
+                }
+            }
+        }
+        stage('Trivy File Scan') {
+            steps {
+                dir('Tetris-V1') {
+                    sh 'trivy fs . > trivyfs.txt'
+                }
+            }
+        }
+        stage("Docker Image Build") {
+            steps {
+                script {
+                    dir('Tetris-V1') {
+                        withDockerRegistry(credentialsId: 'docker', toolName: 'docker') {   
+                            sh 'docker system prune -f'
+                            sh 'docker container prune -f'
+                            sh 'docker build -t tetrisv1 .'
+                        }
+                    }
+                }
+            }
+        }
+        stage("Docker Image Cleanup") {
+            steps {
+                script {
+                    sh '''
+                    echo "Cleaning old Docker images, keeping only latest..."
+
+                    LATEST_ID=$(docker images tetrisv1:latest --format "{{.ID}}")
+
+                    if [ -z "$LATEST_ID" ]; then
+                    echo "No latest image found, skipping cleanup"
+                    exit 0
+                    fi
+
+                    docker images tetrisv1 --format "{{.ID}}" \
+                    | grep -v "$LATEST_ID" \
+                    | xargs -r docker rmi -f
+
+                    echo "Docker image cleanup completed"
+                    '''
+                }
+            }
+        }
+        stage("Docker Image Pushing") {
+            steps {
+                script {
+                    withDockerRegistry(credentialsId: 'docker', toolName: 'docker') {   
+                        sh 'docker tag tetrisv1 freelancerdev/tetrisv1:${BUILD_NUMBER}'         /* <---------------- */
+                        sh 'docker push freelancerdev/tetrisv1:${BUILD_NUMBER}'                 /* <---------------- */
+                    }
+                }
+            }
+        }
+        stage("TRIVY Image Scan") {
+            steps {
+                sh 'trivy image freelancerdev/tetrisv1:${BUILD_NUMBER} > trivyimage.txt'        /* <---------------- */
+            }
+        }
+        stage('Checkout Code') {
+            steps {
+                git branch: 'main', url: 'http://3.85.174.206/root/devsecops.git'               /* <---------------- */
+            }
+        }
+        stage('Update Deployment file') {
+            environment {
+                GIT_REPO_NAME = "devsecops"                                                     /* <---------------- */
+                GIT_USER_NAME = "root"
+                GIT_DOM       = "3.85.174.206"                                                   /* <---------------- */
+                GIT_PROTOCOL  = "http"
+            }
+            steps {
+                dir('Manifest-file') {
+                    withCredentials([string(credentialsId: 'gitlab-api-token', variable: 'GIT_TOKEN')]) {
+                        sh '''
+                            git config user.email "gitlab_admin_f145a2@example.com"
+                            git config user.name "root"
+                            BUILD_NUMBER=${BUILD_NUMBER}
+                            echo $BUILD_NUMBER
+                            imageTag=$(grep -oP '(?<=tetrisv1:)[^ ]+' deployment-service.yml)
+                            echo $imageTag
+                            sed -i "s/tetrisv1:${imageTag}/tetrisv1:${BUILD_NUMBER}/" deployment-service.yml
+                            git add deployment-service.yml
+                            git commit -m "Update deployment Image to version ${BUILD_NUMBER}" || echo "No changes to commit"
+                            git push ${GIT_PROTOCOL}://oauth2:${GIT_TOKEN}@${GIT_DOM}/${GIT_USER_NAME}/${GIT_REPO_NAME}.git HEAD:main
+                        '''
+                    }
+                }
+            }
+        }
+    }
+}
